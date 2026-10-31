@@ -1,0 +1,908 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>下單閘門</title>
+<meta name="theme-color" content="#E7EBEE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E151B" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="下單閘門">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{background:var(--bg,#E7EBEE);-webkit-text-size-adjust:100%}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+<style>
+/* Layout: 一條由上到下的飛行前檢查流程。頂端是一塊會變色的狀態牌，其下依序是 停、計畫、清單、放行。 */
+:root{
+  --bg:#E7EBEE; --surface:#F5F7F8; --raised:#FFFFFF; --ink:#101B24; --muted:#586775; --line:#C9D1D8;
+  --amber:#F2B01E; --on-amber:#2A1E00; --amber-soft:#FBEBC2;
+  --go:#17804F; --on-go:#FFFFFF; --go-soft:#D5EDE1;
+  --stop:#C2362B; --on-stop:#FFFFFF; --stop-soft:#F7DAD6;
+  --done:#243543; --on-done:#FFFFFF;
+  --focus:#1B5FD1;
+  --f-ui:'Noto Sans TC','PingFang TC','Microsoft JhengHei',system-ui,sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --f-label:'Barlow Condensed','Arial Narrow','Noto Sans TC',sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E151B; --surface:#151F27; --raised:#1B2833; --ink:#E6ECF0; --muted:#93A3B0; --line:#2C3B48;
+    --amber:#F2B01E; --on-amber:#2A1E00; --amber-soft:#3A2E0E;
+    --go:#3FBF86; --on-go:#04170E; --go-soft:#12301F;
+    --stop:#E5604F; --on-stop:#1E0503; --stop-soft:#3A1713;
+    --done:#2C3E4D; --on-done:#E6ECF0;
+    --focus:#7BA8F7; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E151B; --surface:#151F27; --raised:#1B2833; --ink:#E6ECF0; --muted:#93A3B0; --line:#2C3B48;
+  --amber:#F2B01E; --on-amber:#2A1E00; --amber-soft:#3A2E0E;
+  --go:#3FBF86; --on-go:#04170E; --go-soft:#12301F;
+  --stop:#E5604F; --on-stop:#1E0503; --stop-soft:#3A1713;
+  --done:#2C3E4D; --on-done:#E6ECF0;
+  --focus:#7BA8F7; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.65;
+  padding-block:20px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+button,input,select,textarea{font:inherit;color:inherit}
+@media (max-width:820px){input,select,textarea{font-size:16px}}
+h1,h2,h3,p{margin:0}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px 16px}
+.brand{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px}
+.brand-zh{font-size:20px;font-weight:700;letter-spacing:.04em}
+.brand-en{font-family:var(--f-label);font-size:14px;font-weight:600;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+.today{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+
+/* placard */
+.placard{--pc:var(--stop);--pc-ink:var(--on-stop);background:var(--pc);color:var(--pc-ink);
+  display:grid;grid-template-columns:auto 1fr minmax(120px,200px);gap:8px 28px;align-items:center;padding:20px 24px;transition:background-color .25s}
+.placard[data-state="hold"]{--pc:var(--amber);--pc-ink:var(--on-amber)}
+.placard[data-state="go"]{--pc:var(--go);--pc-ink:var(--on-go)}
+.placard[data-state="done"]{--pc:var(--done);--pc-ink:var(--on-done)}
+.pl-word{font-family:var(--f-label);font-weight:700;font-size:clamp(44px,9vw,80px);line-height:.95;letter-spacing:.03em}
+.pl-zh{font-size:20px;font-weight:700}
+.pl-sub{font-size:14px;opacity:.92;margin-top:2px;max-width:46ch}
+.pl-count{font-family:var(--f-mono);font-size:13px;margin-bottom:6px;text-align:right}
+.pl-bar{height:6px;background:color-mix(in srgb,var(--pc-ink) 25%,transparent)}
+.pl-bar i{display:block;height:100%;width:0;background:var(--pc-ink);transition:width .25s}
+@media (max-width:640px){.placard{grid-template-columns:1fr;padding:18px 16px}.pl-count{text-align:left}}
+
+/* tabs */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tab{background:none;border:0;border-bottom:3px solid transparent;padding:10px 16px;margin-bottom:-1px;cursor:pointer;color:var(--muted);font-weight:500}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--amber);font-weight:700}
+.panel[hidden]{display:none}
+
+/* steps */
+.step{display:flex;flex-direction:column;gap:14px;padding-top:22px;border-top:1px solid var(--line)}
+.step:first-child{border-top:0;padding-top:4px}
+.step h2{font-size:18px;display:flex;align-items:center;gap:12px;text-wrap:balance}
+.sn{font-family:var(--f-mono);font-weight:600;font-size:14px;width:28px;height:28px;display:inline-grid;place-items:center;background:var(--ink);color:var(--bg);flex:none}
+.hint{color:var(--muted);font-size:14px;max-width:62ch}
+.warn{background:var(--amber-soft);color:var(--ink);padding:10px 14px;font-size:14px;border-left:4px solid var(--amber)}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--raised);border:1px solid var(--line);padding:8px 14px;cursor:pointer;border-radius:6px;min-height:40px}
+.chip[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);font-weight:700}
+.chip.risky[aria-pressed="true"]{background:var(--amber-soft)}
+
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field.wide{grid-column:1/-1}
+.field label,.lbl{font-size:13px;color:var(--muted);font-weight:500}
+.field input,.field select,.field textarea{background:var(--raised);border:1px solid var(--line);padding:9px 10px;min-height:42px;border-radius:6px;width:100%;min-width:0}
+.field textarea{resize:vertical;line-height:1.5}
+.field input::placeholder,.field textarea::placeholder{color:var(--muted);opacity:.75}
+.seg{display:flex}
+.seg button{flex:1;background:var(--raised);border:1px solid var(--line);min-height:42px;cursor:pointer;font-weight:500}
+.seg button:first-child{border-radius:6px 0 0 6px}
+.seg button:last-child{border-radius:0 6px 6px 0;border-left:0}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:700}
+
+.calc{background:var(--surface);border:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:16px}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px}
+.metric .k{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.metric .v{font-family:var(--f-mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.metric .v.bad{color:var(--stop)}
+.metric .v.ok{color:var(--go)}
+.checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.chk{display:grid;grid-template-columns:22px 1fr;gap:2px 10px;padding:8px 0;border-top:1px solid var(--line);align-items:start}
+.chk .mk{font-family:var(--f-mono);font-weight:700;text-align:center}
+.chk[data-s="pass"] .mk{color:var(--go)}
+.chk[data-s="fail"] .mk{color:var(--stop)}
+.chk[data-s="wait"] .mk{color:var(--muted)}
+.chk .dt{grid-column:2;font-size:13px;color:var(--muted);font-family:var(--f-mono);overflow-wrap:anywhere}
+.chk[data-s="fail"] .dt{color:var(--stop)}
+
+.tick{display:grid;grid-template-columns:26px 1fr;gap:12px;align-items:start;padding:12px 0;border-top:1px solid var(--line);cursor:pointer}
+.tick:first-child{border-top:0}
+.tick input{width:20px;height:20px;margin:2px 0 0;accent-color:var(--go);cursor:pointer}
+.ticklist{display:flex;flex-direction:column}
+
+.readback{background:var(--surface);border:1px solid var(--line);padding:14px 16px;font-size:16px;line-height:1.8}
+.readback b{font-family:var(--f-mono);font-weight:600}
+.readback.empty{color:var(--muted);font-size:14px}
+
+.hold{position:relative;overflow:hidden;width:100%;min-height:68px;border:2px solid var(--line);background:var(--raised);cursor:not-allowed;
+  font-weight:700;font-size:17px;border-radius:6px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation;opacity:.55}
+.hold::before{content:"";position:absolute;inset:0;width:calc(var(--p,0)*100%);background:var(--amber)}
+.hold span{position:relative}
+.hold:not(:disabled){opacity:1;cursor:pointer;border-color:var(--go)}
+.hold:not(:disabled):active{color:var(--on-amber)}
+.hold[data-holding="1"]{color:var(--on-amber)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{background:var(--raised);border:1px solid var(--line);padding:0 16px;min-height:42px;cursor:pointer;border-radius:6px;font-weight:500}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:700}
+.btn.danger{border-color:var(--stop);color:var(--stop)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.armed{background:var(--stop);color:var(--on-stop);border-color:var(--stop)}
+
+.post{background:var(--surface);border:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:14px}
+.post h2{font-size:18px}
+
+/* rules */
+.rules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
+.bar-box{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px 16px;background:var(--surface);border:1px solid var(--line);padding:12px 14px}
+.bar-box[hidden]{display:none}
+.bar-st{font-family:var(--f-mono);font-size:14px}
+.item-edit{display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-bottom:8px}
+.item-edit select{background:var(--raised);border:1px solid var(--line);padding:0 8px;min-height:42px;border-radius:6px;max-width:130px}
+@media (max-width:560px){.item-edit{grid-template-columns:1fr 1fr}.item-edit input{grid-column:1/-1}.item-edit select{max-width:none}}
+.item-edit input{background:var(--raised);border:1px solid var(--line);padding:9px 10px;min-height:42px;border-radius:6px;min-width:0}
+.note{font-size:13px;color:var(--muted)}
+
+/* journal */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;background:var(--surface);border:1px solid var(--line);padding:16px}
+.jlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.je{display:grid;gap:6px;padding:14px 0;border-top:1px solid var(--line)}
+.je-head{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline}
+.je-head .sym{font-family:var(--f-mono);font-size:17px}
+.st{font-size:12px;font-weight:700;padding:1px 8px;border-radius:4px;letter-spacing:.04em}
+.st.rel{background:var(--go-soft);color:var(--go)}
+.st.abt{background:var(--stop-soft);color:var(--stop)}
+.je time{font-family:var(--f-mono);font-size:12px;color:var(--muted);margin-left:auto}
+.je-nums{font-family:var(--f-mono);font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.je-note{font-size:14px;overflow-wrap:anywhere}
+.je select{background:var(--raised);border:1px solid var(--line);padding:4px 8px;border-radius:6px;min-height:34px;width:max-content}
+.csvbox{width:100%;min-height:120px;background:var(--raised);border:1px solid var(--line);padding:10px;font-family:var(--f-mono);font-size:12px;border-radius:6px}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);
+  padding:10px 18px;font-size:14px;z-index:20;max-width:calc(100% - 32px)}
+@media (prefers-reduced-motion:reduce){.placard,.pl-bar i{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><span class="brand-zh">下單閘門</span><span class="brand-en">Order Gate · Pre-trade check</span></div>
+    <div class="today" id="todayStat"></div>
+  </header>
+
+  <section class="placard" id="placard" data-state="locked" aria-live="polite">
+    <div class="pl-word" id="plWord">LOCKED</div>
+    <div><div class="pl-zh" id="plZh">鎖定中</div><div class="pl-sub" id="plSub"></div></div>
+    <div><div class="pl-count" id="plCount">0 / 0 通過</div><div class="pl-bar"><i id="plBar"></i></div></div>
+  </section>
+
+  <nav class="tabs" role="tablist" aria-label="頁面">
+    <button class="tab" role="tab" id="t-gate" aria-selected="true" data-tab="gate">下單前確認</button>
+    <button class="tab" role="tab" id="t-rules" aria-selected="false" data-tab="rules">我的規則</button>
+    <button class="tab" role="tab" id="t-journal" aria-selected="false" data-tab="journal">日誌</button>
+  </nav>
+
+  <!-- ===== 下單前確認 ===== -->
+  <section class="panel" id="p-gate" role="tabpanel" aria-labelledby="t-gate">
+    <div id="prep" style="display:flex;flex-direction:column;gap:22px">
+
+      <div class="bar-box" id="stopRow" hidden>
+        <span class="bar-st" id="stopTxt"></span>
+        <span class="row"><button type="button" class="btn danger" id="stopBtn">記錄停損了</button><button type="button" class="btn" id="winBtn">記錄獲利出場</button></span>
+      </div>
+
+      <article class="step">
+        <h2><span class="sn">1</span>先停一下：你現在是什麼狀態？</h2>
+        <div class="chips" id="moods"></div>
+        <p class="warn" id="moodWarn" hidden></p>
+      </article>
+
+      <article class="step">
+        <h2><span class="sn">2</span>寫下這筆交易的計畫</h2>
+        <div class="bar-box" id="barBox">
+          <div><div class="lbl">收定的K棒</div><div class="bar-st" id="barSt"></div></div>
+          <button type="button" class="btn" id="barBtn">K棒剛收定，開始計時</button>
+        </div>
+        <div class="fields">
+          <div class="field"><label for="symbol">商品代號</label><input id="symbol" list="symList" autocomplete="off" autocapitalize="characters" placeholder="MNQ 或 MGC"><datalist id="symList"><option value="MNQ"><option value="MGC"></datalist></div>
+          <div class="field"><span class="lbl">方向</span>
+            <div class="seg" role="group" aria-label="方向">
+              <button type="button" id="sideLong" aria-pressed="true">做多</button>
+              <button type="button" id="sideShort" aria-pressed="false">做空</button>
+            </div>
+          </div>
+          <div class="field"><span class="lbl">單別</span>
+            <div class="seg" role="group" aria-label="單別">
+              <button type="button" id="kindFirst" aria-pressed="true">第一單</button>
+              <button type="button" id="kindAdd" aria-pressed="false">加碼</button>
+            </div>
+          </div>
+          <div class="field"><label for="entry">進場價</label><input class="num" id="entry" inputmode="decimal" autocomplete="off"></div>
+          <div class="field"><label for="stop">停損價</label><input class="num" id="stop" inputmode="decimal" autocomplete="off"></div>
+          <div class="field"><label for="target">目標價</label><input class="num" id="target" inputmode="decimal" autocomplete="off"></div>
+          <div class="field"><label for="qty">數量（股、口、顆）</label><input class="num" id="qty" inputmode="decimal" autocomplete="off"></div>
+          <div class="field"><label for="mult">每 1 點價值（MNQ 2、MGC 10，自動帶入）</label><input class="num" id="mult" inputmode="decimal" value="1" autocomplete="off"></div>
+          <div class="field"><label for="pnl">今日已實現損益（虧損填負數）</label><input class="num" id="pnl" inputmode="decimal" value="0" autocomplete="off"></div>
+          <div class="field wide"><label for="reason">進場理由，一句話說完</label><textarea id="reason" rows="2" placeholder="例如：突破前高後回測不破，量能放大，停損放在回測低點下方"></textarea></div>
+        </div>
+
+        <div class="calc">
+          <div class="metrics">
+            <div class="metric"><div class="k">這筆最多虧</div><div class="v" id="mRisk">—</div></div>
+            <div class="metric"><div class="k">單筆停損上限</div><div class="v" id="mPct">—</div></div>
+            <div class="metric"><div class="k">風險報酬比</div><div class="v" id="mRR">—</div></div>
+            <div class="metric"><div class="k">依規則最多可下</div><div class="v" id="mMax">—</div></div>
+          </div>
+          <ul class="checks" id="checks"></ul>
+        </div>
+      </article>
+
+      <article class="step">
+        <h2><span class="sn">3</span>逐項回答，不是看過就算</h2>
+        <p class="hint">每一項都要誠實勾選。勾不下去的那一項，就是這筆單現在不該下的原因。</p>
+        <div class="ticklist" id="ticks"></div>
+      </article>
+
+      <article class="step">
+        <h2><span class="sn">4</span>最後核對與放行</h2>
+        <div class="readback empty" id="readback">計畫填完整後，這裡會把整筆交易念給你聽。</div>
+        <div class="field" style="max-width:360px"><label for="confirmSym" id="confirmLbl">重新輸入商品代號確認</label><input id="confirmSym" autocomplete="off" autocapitalize="characters" disabled></div>
+        <button type="button" class="hold" id="hold" disabled><span id="holdTxt">長按 1.5 秒放行</span></button>
+        <p class="note">這個頁面不會連到券商，也不會替你下單。放行之後，請在你的下單軟體執行，並做下單後核對。</p>
+        <div class="row"><button type="button" class="btn danger" id="abort">放棄這筆</button><span class="note">放棄也會記進日誌，它是紀律的一部分。</span></div>
+      </article>
+    </div>
+
+    <div class="post" id="post" hidden>
+      <h2>下單後核對</h2>
+      <div class="readback" id="postRead"></div>
+      <p class="hint">回到券商畫面，對照上面的內容逐項確認。</p>
+      <div class="ticklist" id="postTicks"></div>
+      <div class="row">
+        <button type="button" class="btn primary" id="postDone" disabled>核對完成，開始新的一筆</button>
+        <button type="button" class="btn" id="postSkip">略過核對</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 我的規則 ===== -->
+  <section class="panel" id="p-rules" role="tabpanel" aria-labelledby="t-rules" hidden>
+    <div style="display:flex;flex-direction:column;gap:24px">
+      <div class="step" style="border-top:0;padding-top:4px">
+        <h2>數字規則</h2>
+        <p class="hint">這些規則只在你冷靜時設定一次。下單時，系統用它們替你擋掉情緒化的單。</p>
+        <div class="rules-grid">
+          <div class="field"><label for="rCur">幣別符號</label><input id="rCur" autocomplete="off"></div>
+          <div class="field"><label for="rDaily">單日風控（單日虧損上限）</label><input class="num" id="rDaily" inputmode="decimal"></div>
+          <div class="field"><label for="rDiv">單筆停損 = 單日風控 ÷ 幾</label><input class="num" id="rDiv" inputmode="decimal"></div>
+          <div class="field"><label for="rBar">K棒收定後要等幾秒（0 表示不檢查）</label><input class="num" id="rBar" inputmode="decimal"></div>
+          <div class="field"><label for="rRev">停損後禁止反向（分鐘，0 表示不檢查）</label><input class="num" id="rRev" inputmode="decimal"></div>
+          <div class="field"><label for="rMax">單日最多放行筆數（0 表示不限）</label><input class="num" id="rMax" inputmode="decimal"></div>
+          <div class="field"><label for="rCd">放行前冷靜倒數（秒）</label><input class="num" id="rCd" inputmode="decimal"></div>
+          <div class="field"><label for="rRR">最低風險報酬比（0 表示不檢查）</label><input class="num" id="rRR" inputmode="decimal"></div>
+        </div>
+        <p class="note">選了高風險情緒（興奮、怕錯過、想翻本、疲累、煩躁）時，倒數自動拉長為 4 倍。</p>
+      </div>
+      <div class="step">
+        <h2>我的檢查問題</h2>
+        <p class="hint">寫成「是或否」能回答的句子。每一項可以設定每筆都問，或只在第一單、只在加碼時問。停損風控、停損後不反向、K棒等待，由系統自動檢查，不用寫在這裡。</p>
+        <div id="itemEdit"></div>
+        <div class="row"><button type="button" class="btn" id="addItem">新增一項</button><button type="button" class="btn danger" id="resetRules">還原預設值</button></div>
+        <p class="note" id="storeNote"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 日誌 ===== -->
+  <section class="panel" id="p-journal" role="tabpanel" aria-labelledby="t-journal" hidden>
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <div class="stats" id="stats"></div>
+      <div class="row">
+        <button type="button" class="btn primary" id="exportCsv">匯出 CSV 備份</button>
+        <button type="button" class="btn danger" id="clearJ">清除全部日誌</button>
+      </div>
+      <div id="csvFallback" hidden>
+        <p class="note" style="margin-bottom:6px">這個畫面無法直接存檔，請複製下面的內容貼到試算表。</p>
+        <textarea class="csvbox" id="csvText" readonly></textarea>
+        <div class="row" style="margin-top:8px"><button type="button" class="btn" id="copyCsv">複製</button></div>
+      </div>
+      <ul class="jlist" id="jlist"></ul>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script>
+(function(){
+'use strict';
+var KEY='order-gate-v2';
+var DEF_RULES={cur:'美金',dailyLoss:2000,div:5,minRR:0,maxTrades:0,cooldown:20,barWait:120,revMin:10};
+var DEF_ITEMS=[
+  {t:'這筆單在我的交易計畫內，不是臨時起意',w:'all'},
+  {t:'我能用一句話說出進場理由，而且已經寫在上面',w:'all'},
+  {t:'我已經劃出邊界（支撐 / 壓力）',w:'all'},
+  {t:'我確認過目前的慣性',w:'all'},
+  {t:'亞當滿足已經出現',w:'all'},
+  {t:'要吃單的位置是乾淨的邊緣',w:'all'},
+  {t:'停損放在「看錯就該離場」的位置，而不是「剛好能承受」的位置',w:'all'},
+  {t:'我查過今天的重大數據、財報、除權息或休市時間',w:'all'},
+  {t:'我不是為了追回剛才的虧損，也不是怕錯過這段行情',w:'all'},
+  {t:'如果這筆停損了，我能接受，並照計畫執行',w:'all'},
+  {t:'第一單：獲利到小亞當就出場，出場位置已經決定',w:'first'},
+  {t:'加碼：前一單目前是獲利的',w:'add'}
+];
+function defItems(){return DEF_ITEMS.map(function(x,i){return{id:'i'+i,t:x.t,w:x.w}})}
+function divN(){var d=store.rules.div;return d>0?d:5}
+function fmtDur(s){return s%60===0?(s/60)+' 分鐘':s+' 秒'}
+var POST_ITEMS=[
+  '券商畫面的商品與方向，和上面念的一樣',
+  '數量和我計畫的一樣',
+  '停損單已經掛上，或停損提醒已經設定',
+  '成交價和預期的差距，在我能接受的範圍內'
+];
+var MOODS=[
+  {k:'calm',t:'平靜專注',risk:false},
+  {k:'excited',t:'興奮，想多賺一點',risk:true,w:'興奮的時候，人會把倉位放大、把停損放寬。'},
+  {k:'fomo',t:'怕錯過行情',risk:true,w:'追著價格跑的單，通常買在別人想賣的地方。'},
+  {k:'revenge',t:'想把虧損賺回來',risk:true,w:'翻本的念頭是最貴的訊號，市場不欠你這筆錢。'},
+  {k:'tired',t:'疲累或分心',risk:true,w:'疲累時漏看的細節，常常就是停損沒掛、數量多打一個零。'},
+  {k:'angry',t:'煩躁或憤怒',risk:true,w:'帶著情緒下的單，之後多半連理由都想不起來。'}
+];
+
+var store={rules:Object.assign({},DEF_RULES),items:defItems(),journal:[]};
+var memOnly=false;
+function load(){
+  try{
+    var raw=localStorage.getItem(KEY);
+    if(raw){
+      var d=JSON.parse(raw);
+      if(d&&typeof d==='object'){
+        if(d.rules)store.rules=Object.assign({},DEF_RULES,d.rules);
+        if(Array.isArray(d.items))store.items=d.items;
+        if(Array.isArray(d.journal))store.journal=d.journal;
+      }
+    }
+  }catch(e){memOnly=true}
+}
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(store));memOnly=false}catch(e){memOnly=true}
+  renderStoreNote();
+}
+
+var $=function(id){return document.getElementById(id)};
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function num(v){var n=parseFloat(String(v).replace(/,/g,''));return isFinite(n)?n:NaN}
+function fmt(n,d){if(!isFinite(n))return '—';return n.toLocaleString('zh-TW',{maximumFractionDigits:d==null?2:d})}
+function money(n){var c=store.rules.cur||'';return (n<0?'-':'')+c+' '+fmt(Math.abs(n),0)}
+function sameDay(a,b){var x=new Date(a),y=new Date(b);return x.getFullYear()===y.getFullYear()&&x.getMonth()===y.getMonth()&&x.getDate()===y.getDate()}
+function stamp(ts){var d=new Date(ts);var p=function(n){return (n<10?'0':'')+n};return (d.getMonth()+1)+'/'+d.getDate()+' '+p(d.getHours())+':'+p(d.getMinutes())}
+
+/* ---------- gate state ---------- */
+var f,ticks,phase,passAt,lastSig,releasedId,postTicks,abortArmed,abortTimer,barAt=null;
+function resetForm(){
+  f={mood:null,side:'long',kind:'first',symbol:'',entry:'',stop:'',target:'',qty:'',mult:'1',pnl:'0',reason:''};
+  ticks={};postTicks={};phase='prep';passAt=null;lastSig='';releasedId=null;abortArmed=false;barAt=null;
+  ['symbol','entry','stop','target','qty','reason','confirmSym'].forEach(function(id){$(id).value=''});
+  $('mult').value='1';$('pnl').value='0';
+  $('prep').hidden=false;$('post').hidden=true;
+  renderMoods();renderTicks();renderSide();renderKind();update();
+}
+function visItems(){return store.items.filter(function(it){return !it.w||it.w==='all'||it.w===f.kind})}
+function lastStop(){
+  var best=null;
+  store.journal.forEach(function(e){if(e.status==='released'&&e.result==='loss'&&e.stopAt&&(!best||e.stopAt>best.stopAt))best=e});
+  return best;
+}
+function lastOpen(){
+  var best=null;
+  store.journal.forEach(function(e){if(e.status==='released'&&!e.result&&(!best||e.ts>best.ts))best=e});
+  return best;
+}
+function hm(ts){var d=new Date(ts);var p=function(n){return (n<10?'0':'')+n};return p(d.getHours())+':'+p(d.getMinutes())}
+function todayReleased(){var now=Date.now();return store.journal.filter(function(e){return e.status==='released'&&sameDay(e.ts,now)}).length}
+
+function calc(){
+  var r=store.rules,e=num(f.entry),s=num(f.stop),t=num(f.target),q=num(f.qty),m=num(f.mult);if(!(m>0))m=1;
+  var o={e:e,s:s,t:t,q:q,m:m,risk:NaN,pct:NaN,rr:NaN,maxQty:NaN,limit:r.dailyLoss>0?r.dailyLoss/divN():NaN};
+  if(isFinite(e)&&isFinite(s)&&q>0){
+    var per=Math.abs(e-s)*m;
+    o.risk=per*q;
+    if(isFinite(o.limit)){
+      o.pct=o.risk/o.limit*100;
+      if(per>0)o.maxQty=Math.floor(o.limit/per);
+    }
+    if(isFinite(t)&&o.risk>0)o.rr=Math.abs(t-e)*m*q/o.risk;
+  }
+  return o;
+}
+function dirOK(){
+  var e=num(f.entry),s=num(f.stop),t=num(f.target);
+  if(!isFinite(e)||!isFinite(s)||!isFinite(t))return null;
+  return f.side==='long'?(s<e&&t>e):(s>e&&t<e);
+}
+function buildChecks(c){
+  var r=store.rules,L=[];
+  var mood=MOODS.filter(function(x){return x.k===f.mood})[0];
+  L.push({l:'已選擇目前的狀態',s:mood?'pass':'wait',d:mood?'狀態：'+mood.t:'請在第 1 步選一個最接近的'});
+  var miss=[];
+  if(!f.symbol.trim())miss.push('商品代號');
+  if(!isFinite(c.e))miss.push('進場價');
+  if(!isFinite(c.s))miss.push('停損價');
+  if(!isFinite(c.t))miss.push('目標價');
+  if(!(c.q>0))miss.push('數量');
+  L.push({l:'價格與數量填寫完整',s:miss.length?'wait':'pass',d:miss.length?'還缺：'+miss.join('、'):''});
+  var d=dirOK();
+  L.push({l:'停損與目標在正確的方向',s:d===null?'wait':(d?'pass':'fail'),d:d===false?(f.side==='long'?'做多時，停損要低於進場價，目標要高於進場價':'做空時，停損要高於進場價，目標要低於進場價'):''});
+  var len=f.reason.trim().length;
+  L.push({l:'進場理由至少寫了 6 個字',s:len>=6?'pass':'wait',d:len>=6?'':len+' / 6 字'});
+  var rl=lastStop();
+  if(rl&&r.revMin>0&&Date.now()-rl.stopAt<r.revMin*60000&&rl.side!==f.side){
+    L.push({l:'停損後沒有立即反向追單',s:'fail',d:hm(rl.stopAt)+' 才停損了'+(rl.side==='long'?'多單':'空單')+'，反向單要等到 '+hm(rl.stopAt+r.revMin*60000)+' 之後'});
+  }else{
+    L.push({l:'停損後沒有立即反向追單',s:'pass',d:''});
+  }
+  var riskLbl='停損風險在單日風控的 1/'+divN()+' 內';
+  if(!(r.dailyLoss>0)){
+    L.push({l:riskLbl,s:'wait',d:'請先到「我的規則」設定單日風控'});
+  }else if(!isFinite(c.risk)){
+    L.push({l:riskLbl,s:'wait',d:'單筆上限 '+money(c.limit)});
+  }else{
+    var okR=c.risk<=c.limit+1e-9;
+    L.push({l:riskLbl,s:okR?'pass':'fail',d:'這筆最多虧 '+money(c.risk)+'，單筆上限 '+money(c.limit)+'（單日風控 '+money(r.dailyLoss)+' ÷ '+divN()+'）'+(okR?'':'；依規則最多下 '+fmt(c.maxQty,0))});
+  }
+  if(r.minRR>0){
+    if(!isFinite(c.rr)){
+      L.push({l:'風險報酬比達標',s:'wait',d:''});
+    }else{
+      var okRR=c.rr>=r.minRR-1e-9;
+      L.push({l:'風險報酬比達標',s:okRR?'pass':'fail',d:'目前 '+fmt(c.rr,2)+'，最低要求 '+fmt(r.minRR,2)});
+    }
+  }
+  if(r.barWait>0){
+    var barLbl='收定的K棒已等滿 '+fmtDur(r.barWait);
+    if(barAt==null){
+      L.push({l:barLbl,s:'wait',d:'K棒收定後，按上方按鈕開始計時'});
+    }else{
+      var el=(Date.now()-barAt)/1000;
+      L.push({l:barLbl,s:el>=r.barWait?'pass':'wait',d:el>=r.barWait?'已等待 '+Math.floor(el)+' 秒':'還要等 '+Math.ceil(r.barWait-el)+' 秒'});
+    }
+  }
+  var cnt=todayReleased();
+  if(r.maxTrades>0){
+    L.push({l:'今天的筆數還沒用完',s:cnt<r.maxTrades?'pass':'fail',d:'今天已放行 '+cnt+' 筆，上限 '+r.maxTrades+' 筆'});
+  }
+  var pnl=num(f.pnl);if(!isFinite(pnl))pnl=0;
+  if(r.dailyLoss>0){
+    L.push({l:'今天的虧損還沒到上限',s:pnl>-r.dailyLoss?'pass':'fail',d:'今日損益 '+money(pnl)+'，虧損上限 '+money(-r.dailyLoss)});
+  }else{
+    L.push({l:'今天的虧損還沒到上限',s:'pass',d:'未設定上限'});
+  }
+  return L;
+}
+
+function readbackHTML(c,ready){
+  if(!ready)return null;
+  var side=(f.kind==='add'?'加碼 ':'')+(f.side==='long'?'做多':'做空');
+  return '你要<b>'+side+' '+esc(f.symbol.trim().toUpperCase())+'</b>，進場 <b>'+fmt(c.e,4)+'</b>，停損 <b>'+fmt(c.s,4)+'</b>，目標 <b>'+fmt(c.t,4)+'</b>，數量 <b>'+fmt(c.q,4)+'</b>。'+
+    '這筆最多虧 <b>'+money(c.risk)+'</b>'+(isFinite(c.pct)?'（單筆上限的 <b>'+fmt(c.pct,0)+'%</b>）':'')+(isFinite(c.rr)?'，目標報酬是風險的 <b>'+fmt(c.rr,2)+'</b> 倍':'')+'。';
+}
+
+var plWord=$('plWord'),plZh=$('plZh'),plSub=$('plSub'),plCount=$('plCount'),plBar=$('plBar'),placard=$('placard');
+var holdBtn=$('hold'),holdTxt=$('holdTxt'),holding=false;
+
+function update(){
+  var r=store.rules,c=calc();
+  var sig=[f.symbol,f.side,f.kind,f.entry,f.stop,f.target,f.qty,f.mult,f.reason].join('|');
+  if(sig!==lastSig){lastSig=sig;passAt=null;if($('confirmSym').value)$('confirmSym').value=''}
+
+  /* bar timer box */
+  $('barBox').hidden=!(r.barWait>0);
+  if(r.barWait>0){
+    if(barAt==null){$('barSt').textContent='尚未開始計時（需等滿 '+fmtDur(r.barWait)+'）';$('barBtn').textContent='K棒剛收定，開始計時'}
+    else{
+      var el0=(Date.now()-barAt)/1000;
+      $('barSt').textContent=el0>=r.barWait?'已等滿 '+fmtDur(r.barWait)+'，可以決定要不要下單':'已過 '+Math.floor(el0)+' 秒，還要等 '+Math.ceil(r.barWait-el0)+' 秒';
+      $('barBtn').textContent='重新計時';
+    }
+  }
+
+  /* last unsettled trade */
+  var lo=lastOpen();
+  $('stopRow').hidden=!lo||phase!=='prep';
+  if(lo&&phase==='prep'){
+    var txt='上一筆 '+lo.symbol+(lo.side==='long'?' 做多':' 做空')+'（'+stamp(lo.ts)+'）還沒結算。';
+    if($('stopTxt').textContent!==txt)$('stopTxt').textContent=txt;
+  }
+
+  /* metrics */
+  var mR=$('mRisk'),mP=$('mPct'),mRR=$('mRR'),mM=$('mMax');
+  mR.textContent=isFinite(c.risk)?money(c.risk):'—';
+  mR.className='v'+(isFinite(c.risk)&&isFinite(c.limit)?(c.risk<=c.limit+1e-9?' ok':' bad'):'');
+  mP.textContent=isFinite(c.limit)?money(c.limit):'—';
+  mRR.textContent=isFinite(c.rr)?fmt(c.rr,2):'—';
+  mRR.className='v'+(isFinite(c.rr)&&r.minRR>0?(c.rr>=r.minRR-1e-9?' ok':' bad'):'');
+  mM.textContent=isFinite(c.maxQty)?fmt(c.maxQty,0):'—';
+
+  /* checks */
+  var L=buildChecks(c);
+  $('checks').innerHTML=L.map(function(x){
+    return '<li class="chk" data-s="'+x.s+'"><span class="mk" aria-hidden="true">'+(x.s==='pass'?'✓':x.s==='fail'?'✕':'·')+'</span><span>'+esc(x.l)+'<span class="sr" style="position:absolute;left:-9999px">'+(x.s==='pass'?'，通過':x.s==='fail'?'，未通過':'，待填')+'</span></span>'+(x.d?'<span class="dt">'+esc(x.d)+'</span>':'')+'</li>';
+  }).join('');
+  var autoPass=L.filter(function(x){return x.s==='pass'}).length;
+  var vis=visItems();
+  var tickCount=vis.filter(function(it){return ticks[it.id]}).length;
+  var total=L.length+vis.length;
+  var passed=autoPass+tickCount;
+  var allPass=passed===total;
+
+  /* cooldown */
+  var mood=MOODS.filter(function(x){return x.k===f.mood})[0];
+  var cdTotal=(r.cooldown>0?r.cooldown:0)*(mood&&mood.risk?4:1);
+  if(phase==='prep'){
+    if(allPass&&passAt==null)passAt=Date.now();
+    if(!allPass)passAt=null;
+  }
+  var remain=0;
+  if(allPass&&passAt!=null)remain=Math.max(0,cdTotal-(Date.now()-passAt)/1000);
+  var cdDone=allPass&&remain<=0;
+
+  /* readback + confirm */
+  var rb=readbackHTML(c,L[1].s==='pass'&&L[2].s==='pass'&&isFinite(c.rr));
+  var rbEl=$('readback');
+  if(rb){rbEl.innerHTML=rb;rbEl.className='readback'}else{rbEl.textContent='計畫填完整後，這裡會把整筆交易念給你聽。';rbEl.className='readback empty'}
+  var sym=f.symbol.trim().toUpperCase();
+  var cs=$('confirmSym');
+  cs.disabled=!cdDone;
+  $('confirmLbl').textContent=cdDone?'重新輸入商品代號「'+sym+'」確認':'重新輸入商品代號確認（倒數結束後開放）';
+  var typedOK=cdDone&&sym&&cs.value.trim().toUpperCase()===sym;
+  var ready=typedOK&&phase==='prep';
+  holdBtn.disabled=!ready;
+  if(!holding)holdTxt.textContent=ready?'長按 1.5 秒放行':'長按 1.5 秒放行（尚未解鎖）';
+
+  /* placard */
+  var st,word,zh,sub;
+  if(phase==='released'){st='done';word='RELEASED';zh='已放行';sub='請到下單軟體執行，再完成下方的下單後核對。'}
+  else if(!allPass){st='locked';word='LOCKED';zh='鎖定中';sub='還有 '+(total-passed)+' 項沒通過。'}
+  else if(!cdDone){st='hold';word='HOLD';zh='冷靜倒數 '+Math.ceil(remain)+' 秒';sub=(mood&&mood.risk?'你選的狀態風險較高，倒數已拉長為 4 倍。':'全部通過了。倒數結束前，再看一次停損位置。')}
+  else if(!typedOK){st='hold';word='CONFIRM';zh='最後一步';sub='重新輸入商品代號，再長按放行鈕。'}
+  else{st='go';word='CLEARED';zh='可以放行';sub='長按放行鈕 1.5 秒。'}
+  placard.setAttribute('data-state',st);
+  plWord.textContent=word;plZh.textContent=zh;plSub.textContent=sub;
+  var shown=phase==='released'?total:passed;
+  plCount.textContent=shown+' / '+total+' 通過';
+  plBar.style.width=(total?shown/total*100:0)+'%';
+
+  /* header */
+  var mx=r.maxTrades>0?' / '+r.maxTrades:'';
+  $('todayStat').textContent='今日放行 '+todayReleased()+mx+' 筆'+(r.dailyLoss>0?' · 單日風控 '+money(r.dailyLoss):'');
+}
+
+/* ---------- mood / side / ticks ---------- */
+function renderMoods(){
+  $('moods').innerHTML=MOODS.map(function(m){
+    return '<button type="button" class="chip'+(m.risk?' risky':'')+'" data-k="'+m.k+'" aria-pressed="'+(f.mood===m.k)+'">'+esc(m.t)+'</button>';
+  }).join('');
+  var m=MOODS.filter(function(x){return x.k===f.mood})[0];
+  var w=$('moodWarn');
+  if(m&&m.risk){w.hidden=false;w.textContent=m.w+' 冷靜倒數會拉長為 4 倍，建議你先離開螢幕走一走。'}else{w.hidden=true}
+}
+$('moods').addEventListener('click',function(ev){
+  var b=ev.target.closest('button[data-k]');if(!b)return;
+  f.mood=b.getAttribute('data-k');renderMoods();update();
+});
+function renderSide(){
+  $('sideLong').setAttribute('aria-pressed',f.side==='long');
+  $('sideShort').setAttribute('aria-pressed',f.side==='short');
+}
+$('sideLong').addEventListener('click',function(){f.side='long';renderSide();update()});
+$('sideShort').addEventListener('click',function(){f.side='short';renderSide();update()});
+function renderKind(){
+  $('kindFirst').setAttribute('aria-pressed',f.kind==='first');
+  $('kindAdd').setAttribute('aria-pressed',f.kind==='add');
+}
+$('kindFirst').addEventListener('click',function(){f.kind='first';renderKind();renderTicks();update()});
+$('kindAdd').addEventListener('click',function(){f.kind='add';renderKind();renderTicks();update()});
+$('barBtn').addEventListener('click',function(){barAt=Date.now();update()});
+function settleLast(res){
+  var lo=lastOpen();if(!lo)return;
+  lo.result=res;if(res==='loss')lo.stopAt=Date.now();
+  save();renderJournal();update();
+  toast(res==='loss'?'已記錄停損。'+(store.rules.revMin>0?'接下來 '+store.rules.revMin+' 分鐘內，反向單會被擋下。':''):'已記錄獲利出場。');
+}
+$('stopBtn').addEventListener('click',function(){settleLast('loss')});
+$('winBtn').addEventListener('click',function(){settleLast('win')});
+['symbol','entry','stop','target','qty','mult','pnl','reason'].forEach(function(id){
+  $(id).addEventListener('input',function(){f[id]=$(id).value;update()});
+});
+$('confirmSym').addEventListener('input',update);
+var MULT={MNQ:2,MGC:10};
+$('symbol').addEventListener('input',function(){
+  var k=$('symbol').value.trim().toUpperCase();
+  if(MULT[k]){$('mult').value=String(MULT[k]);f.mult=String(MULT[k]);update()}
+});
+
+function renderTicks(){
+  $('ticks').innerHTML=visItems().map(function(it){
+    return '<label class="tick"><input type="checkbox" data-id="'+esc(it.id)+'"'+(ticks[it.id]?' checked':'')+'><span>'+esc(it.t)+'</span></label>';
+  }).join('')||'<p class="note">這一類單別還沒有檢查問題，可以到「我的規則」新增。</p>';
+}
+$('ticks').addEventListener('change',function(ev){
+  var cb=ev.target;if(!cb.matches('input[type=checkbox]'))return;
+  ticks[cb.getAttribute('data-id')]=cb.checked;update();
+});
+
+/* ---------- hold to release ---------- */
+var holdStart=0,holdRaf=0,HOLD_MS=1500;
+function holdFrame(){
+  if(!holding)return;
+  var p=Math.min(1,(performance.now()-holdStart)/HOLD_MS);
+  holdBtn.style.setProperty('--p',p);
+  if(p>=1){holding=false;holdBtn.removeAttribute('data-holding');holdBtn.style.setProperty('--p',0);release();return}
+  holdRaf=requestAnimationFrame(holdFrame);
+}
+function holdBegin(){
+  if(holdBtn.disabled||holding)return;
+  holding=true;holdStart=performance.now();holdBtn.setAttribute('data-holding','1');holdTxt.textContent='繼續按住…';
+  holdRaf=requestAnimationFrame(holdFrame);
+}
+function holdEnd(){
+  if(!holding)return;
+  holding=false;cancelAnimationFrame(holdRaf);holdBtn.removeAttribute('data-holding');holdBtn.style.setProperty('--p',0);update();
+}
+holdBtn.addEventListener('pointerdown',function(ev){if(ev.button!==undefined&&ev.button>0)return;holdBegin()});
+['pointerup','pointerleave','pointercancel'].forEach(function(n){holdBtn.addEventListener(n,holdEnd)});
+holdBtn.addEventListener('contextmenu',function(ev){ev.preventDefault()});
+holdBtn.addEventListener('keydown',function(ev){if((ev.key===' '||ev.key==='Enter')&&!ev.repeat){ev.preventDefault();holdBegin()}});
+holdBtn.addEventListener('keyup',function(ev){if(ev.key===' '||ev.key==='Enter')holdEnd()});
+holdBtn.addEventListener('blur',holdEnd);
+
+function snapshot(status){
+  var c=calc();
+  var mood=MOODS.filter(function(x){return x.k===f.mood})[0];
+  return{id:'j'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),ts:Date.now(),status:status,kind:f.kind,stopAt:null,
+    symbol:f.symbol.trim().toUpperCase()||'—',side:f.side,entry:c.e,stop:c.s,target:c.t,qty:c.q,mult:c.m,
+    risk:isFinite(c.risk)?c.risk:null,pct:isFinite(c.pct)?c.pct:null,rr:isFinite(c.rr)?c.rr:null,
+    mood:mood?mood.t:'',note:f.reason.trim(),result:'',verified:false};
+}
+function release(){
+  var e=snapshot('released');
+  store.journal.push(e);save();
+  releasedId=e.id;phase='released';
+  $('prep').hidden=true;$('post').hidden=false;
+  var side=(e.kind==='add'?'加碼 ':'')+(e.side==='long'?'做多':'做空');
+  $('postRead').innerHTML='<b>'+side+' '+esc(e.symbol)+'</b>，進場 <b>'+fmt(e.entry,4)+'</b>，停損 <b>'+fmt(e.stop,4)+'</b>，目標 <b>'+fmt(e.target,4)+'</b>，數量 <b>'+fmt(e.qty,4)+'</b>。';
+  postTicks={};renderPostTicks();update();renderJournal();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function renderPostTicks(){
+  $('postTicks').innerHTML=POST_ITEMS.map(function(t,i){
+    return '<label class="tick"><input type="checkbox" data-i="'+i+'"'+(postTicks[i]?' checked':'')+'><span>'+esc(t)+'</span></label>';
+  }).join('');
+  $('postDone').disabled=!POST_ITEMS.every(function(_,i){return postTicks[i]});
+}
+$('postTicks').addEventListener('change',function(ev){
+  var cb=ev.target;if(!cb.matches('input[type=checkbox]'))return;
+  postTicks[cb.getAttribute('data-i')]=cb.checked;
+  $('postDone').disabled=!POST_ITEMS.every(function(_,i){return postTicks[i]});
+});
+$('postDone').addEventListener('click',function(){
+  store.journal.forEach(function(e){if(e.id===releasedId)e.verified=true});
+  save();toast('核對完成，已記錄。');resetForm();renderJournal();
+});
+$('postSkip').addEventListener('click',function(){resetForm();renderJournal()});
+
+$('abort').addEventListener('click',function(){
+  var b=$('abort');
+  if(!abortArmed){
+    abortArmed=true;b.textContent='再按一次，確定放棄並記錄';b.classList.add('armed');
+    clearTimeout(abortTimer);abortTimer=setTimeout(function(){abortArmed=false;b.textContent='放棄這筆';b.classList.remove('armed')},4000);
+    return;
+  }
+  clearTimeout(abortTimer);
+  var e=snapshot('aborted');store.journal.push(e);save();
+  b.textContent='放棄這筆';b.classList.remove('armed');
+  toast('已記錄為放棄。沒下的單，也是好決定。');resetForm();renderJournal();
+});
+
+/* ---------- toast ---------- */
+var toastTimer;
+function toast(msg){var t=$('toast');t.textContent=msg;t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.hidden=true},3200)}
+
+/* ---------- tabs ---------- */
+function showTab(name){
+  ['gate','rules','journal'].forEach(function(n){
+    var on=n===name;
+    $('p-'+n).hidden=!on;
+    $('t-'+n).setAttribute('aria-selected',on);
+  });
+  if(name==='journal')renderJournal();
+}
+document.querySelector('.tabs').addEventListener('click',function(ev){
+  var b=ev.target.closest('.tab');if(b)showTab(b.getAttribute('data-tab'));
+});
+
+/* ---------- rules ---------- */
+var RFIELDS=[['rDaily','dailyLoss'],['rDiv','div'],['rBar','barWait'],['rRev','revMin'],['rMax','maxTrades'],['rCd','cooldown'],['rRR','minRR']];
+function fillRules(){
+  $('rCur').value=store.rules.cur;
+  RFIELDS.forEach(function(p){$(p[0]).value=store.rules[p[1]]});
+}
+RFIELDS.forEach(function(p){
+  $(p[0]).addEventListener('input',function(){
+    var n=num($(p[0]).value);
+    if(isFinite(n)&&n>=0){store.rules[p[1]]=n;save();update()}
+  });
+});
+$('rCur').addEventListener('input',function(){store.rules.cur=$('rCur').value;save();update()});
+
+function renderItemEdit(){
+  $('itemEdit').innerHTML=store.items.map(function(it){
+    var w=it.w||'all';
+    return '<div class="item-edit"><input data-id="'+esc(it.id)+'" value="'+esc(it.t)+'" aria-label="檢查問題">'+
+      '<select data-w="'+esc(it.id)+'" aria-label="什麼時候問"><option value="all"'+(w==='all'?' selected':'')+'>每筆都問</option><option value="first"'+(w==='first'?' selected':'')+'>只問第一單</option><option value="add"'+(w==='add'?' selected':'')+'>只問加碼</option></select>'+
+      '<button type="button" class="btn" data-del="'+esc(it.id)+'">刪除</button></div>';
+  }).join('');
+}
+$('itemEdit').addEventListener('change',function(ev){
+  var s=ev.target;if(!s.matches('select[data-w]'))return;
+  var id=s.getAttribute('data-w');
+  store.items.forEach(function(it){if(it.id===id)it.w=s.value});
+  save();renderTicks();update();
+});
+$('itemEdit').addEventListener('input',function(ev){
+  var inp=ev.target;if(!inp.matches('input[data-id]'))return;
+  var id=inp.getAttribute('data-id');
+  store.items.forEach(function(it){if(it.id===id)it.t=inp.value});
+  save();renderTicks();update();
+});
+$('itemEdit').addEventListener('click',function(ev){
+  var b=ev.target.closest('button[data-del]');if(!b)return;
+  var id=b.getAttribute('data-del');
+  store.items=store.items.filter(function(it){return it.id!==id});
+  delete ticks[id];save();renderItemEdit();renderTicks();update();
+});
+$('addItem').addEventListener('click',function(){
+  store.items.push({id:'i'+Date.now().toString(36),t:'',w:'all'});
+  save();renderItemEdit();renderTicks();update();
+  var ins=$('itemEdit').querySelectorAll('input');if(ins.length)ins[ins.length-1].focus();
+});
+var resetArmed=false,resetTimer;
+$('resetRules').addEventListener('click',function(){
+  var b=$('resetRules');
+  if(!resetArmed){
+    resetArmed=true;b.textContent='再按一次，確定還原';b.classList.add('armed');
+    clearTimeout(resetTimer);resetTimer=setTimeout(function(){resetArmed=false;b.textContent='還原預設值';b.classList.remove('armed')},4000);
+    return;
+  }
+  clearTimeout(resetTimer);resetArmed=false;b.textContent='還原預設值';b.classList.remove('armed');
+  store.rules=Object.assign({},DEF_RULES);
+  store.items=defItems();
+  save();fillRules();renderItemEdit();renderTicks();update();toast('已還原預設規則。');
+});
+function renderStoreNote(){
+  $('storeNote').textContent=memOnly
+    ?'目前這個瀏覽器無法保存資料，關閉頁面後設定與日誌會消失。請定期到「日誌」匯出 CSV 備份。'
+    :'規則與日誌只保存在這台裝置的這個 App 裡。iPhone 的 Safari 分頁與主畫面 App 資料是分開的，手機與電腦之間也不會同步。重要紀錄請到「日誌」匯出 CSV 備份。';
+}
+
+/* ---------- journal ---------- */
+function renderJournal(){
+  var J=store.journal,rel=J.filter(function(e){return e.status==='released'}),abt=J.length-rel.length;
+  var win=rel.filter(function(e){return e.result==='win'}).length,loss=rel.filter(function(e){return e.result==='loss'}).length;
+  var ver=rel.filter(function(e){return e.verified}).length;
+  function cell(k,v){return '<div class="metric"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>'}
+  $('stats').innerHTML=cell('放行',rel.length)+cell('放棄',abt)+
+    cell('已結算勝率',(win+loss)?fmt(win/(win+loss)*100,0)+'%':'—')+
+    cell('下單後核對完成',rel.length?fmt(ver/rel.length*100,0)+'%':'—');
+  var rows=J.slice().reverse().map(function(e){
+    var side=(e.side==='long'?'多':'空')+(e.kind==='add'?' · 加碼':'');
+    var rel=e.status==='released';
+    return '<li class="je"><div class="je-head"><span class="st '+(rel?'rel':'abt')+'">'+(rel?'放行':'放棄')+'</span><b class="sym">'+esc(e.symbol)+'</b><span>'+side+'</span><time>'+stamp(e.ts)+'</time></div>'+
+      '<div class="je-nums">進 '+fmt(e.entry,4)+' · 損 '+fmt(e.stop,4)+' · 標 '+fmt(e.target,4)+' · 量 '+fmt(e.qty,4)+'</div>'+
+      '<div class="je-nums">風險 '+(e.risk!=null?money(e.risk):'—')+(e.pct!=null?'（單筆上限的 '+fmt(e.pct,0)+'%）':'')+' · R:R '+(e.rr!=null?fmt(e.rr,2):'—')+(rel?(e.verified?' · 已核對':' · 未核對'):'')+'</div>'+
+      '<div class="je-note">'+(e.mood?'狀態：'+esc(e.mood)+'　':'')+(e.note?'理由：'+esc(e.note):'')+'</div>'+
+      (rel?'<div><select data-res="'+esc(e.id)+'" aria-label="結果"><option value=""'+(e.result===''?' selected':'')+'>結果未結算</option><option value="win"'+(e.result==='win'?' selected':'')+'>獲利</option><option value="loss"'+(e.result==='loss'?' selected':'')+'>虧損</option><option value="flat"'+(e.result==='flat'?' selected':'')+'>持平</option></select></div>':'')+
+      '</li>';
+  }).join('');
+  $('jlist').innerHTML=rows||'<li class="note" style="padding:14px 0">還沒有紀錄。放行或放棄第一筆之後，會出現在這裡。</li>';
+}
+$('jlist').addEventListener('change',function(ev){
+  var s=ev.target;if(!s.matches('select[data-res]'))return;
+  var id=s.getAttribute('data-res');
+  store.journal.forEach(function(e){
+    if(e.id!==id)return;
+    e.result=s.value;
+    if(s.value==='loss'){if(!e.stopAt)e.stopAt=Date.now()}else{e.stopAt=null}
+  });
+  save();renderJournal();update();
+});
+var clearArmed=false,clearTimer;
+$('clearJ').addEventListener('click',function(){
+  var b=$('clearJ');
+  if(!clearArmed){
+    clearArmed=true;b.textContent='再按一次，確定清除';b.classList.add('armed');
+    clearTimeout(clearTimer);clearTimer=setTimeout(function(){clearArmed=false;b.textContent='清除全部日誌';b.classList.remove('armed')},4000);
+    return;
+  }
+  clearTimeout(clearTimer);clearArmed=false;b.textContent='清除全部日誌';b.classList.remove('armed');
+  store.journal=[];save();renderJournal();update();toast('日誌已清除。');
+});
+
+/* ---------- CSV export ---------- */
+var isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Mac/.test(navigator.platform));
+async function saveCsv(csv){
+  var name='order-gate-journal.csv';
+  if(isIOS&&navigator.canShare){
+    try{
+      var file=new File([csv],name,{type:'text/csv'});
+      if(navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});return true}
+    }catch(e){if(e&&e.name==='AbortError')return true}
+  }
+  try{
+    var url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    var a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url)},1500);
+    return true;
+  }catch(e){return false}
+}
+function csvCell(v){var s=v==null?'':String(v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+function buildCsv(){
+  var head=['時間','商品','方向','單別','進場價','停損價','目標價','數量','每點價值','最大虧損','佔單筆上限%','風險報酬比','狀態','理由','結果','下單後核對','類型'];
+  var resMap={'':'未結算',win:'獲利',loss:'虧損',flat:'持平'};
+  var lines=[head.join(',')].concat(store.journal.map(function(e){
+    var d=new Date(e.ts);
+    return [d.toLocaleString('zh-TW',{hour12:false}),e.symbol,e.side==='long'?'做多':'做空',e.kind==='add'?'加碼':'第一單',e.entry,e.stop,e.target,e.qty,e.mult,
+      e.risk!=null?e.risk.toFixed(2):'',e.pct!=null?e.pct.toFixed(2):'',e.rr!=null?e.rr.toFixed(2):'',e.mood,e.note,
+      resMap[e.result||''],e.verified?'是':'否',e.status==='released'?'放行':'放棄'].map(csvCell).join(',');
+  }));
+  return '﻿'+lines.join('\n');
+}
+function showFallback(text){$('csvText').value=text;$('csvFallback').hidden=false}
+$('exportCsv').addEventListener('click',async function(){
+  if(!store.journal.length){toast('日誌還是空的，沒有可以匯出的內容。');return}
+  var csv=buildCsv();
+  var ok=await saveCsv(csv);
+  if(ok){toast('已匯出。')}else{showFallback(csv)}
+});
+$('copyCsv').addEventListener('click',function(){
+  var ta=$('csvText');
+  var fb=function(){ta.focus();ta.select();toast('已選取內容，請手動複製。')};
+  try{navigator.clipboard.writeText(ta.value).then(function(){toast('已複製。')},fb)}catch(e){fb()}
+});
+
+/* ---------- boot ---------- */
+load();
+fillRules();renderItemEdit();renderStoreNote();
+resetForm();renderJournal();
+setInterval(function(){if(phase==='prep'&&!holding)update()},250);
+try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){navigator.serviceWorker.register('./sw.js').catch(function(){})});
+}
+})();
+</script>
+</body>
+</html>
